@@ -25,6 +25,21 @@ const EXCLUDE_PATTERNS = [
   ".DS_Store",      // macOS files
 ];
 
+function resolveInstalledPackageDir(baseDir, pkg) {
+  const direct = path.join(baseDir, "node_modules", pkg);
+  if (fs.existsSync(direct)) return direct;
+
+  const pnpmHoisted = path.join(baseDir, "node_modules", ".pnpm", "node_modules", pkg);
+  if (fs.existsSync(pnpmHoisted)) return pnpmHoisted;
+
+  try {
+    const manifestPath = require.resolve(`${pkg}/package.json`, { paths: [baseDir] });
+    return path.dirname(manifestPath);
+  } catch {
+    return null;
+  }
+}
+
 function shouldExclude(name) {
   return EXCLUDE_PATTERNS.some(pattern => {
     if (pattern.includes("*")) {
@@ -118,6 +133,16 @@ function copyStandaloneBuild(appDir, buildDistDir, cliAppDir) {
   const standaloneNodeModules = path.join(standaloneRoot, "node_modules");
   if (standaloneApp !== standaloneRoot && fs.existsSync(standaloneNodeModules)) {
     copyRecursive(standaloneNodeModules, path.join(cliAppDir, "node_modules"));
+  }
+}
+
+function getNextRuntimeDependencies(appDir) {
+  try {
+    const nextPkgPath = require.resolve("next/package.json", { paths: [appDir] });
+    const nextPkg = JSON.parse(fs.readFileSync(nextPkgPath, "utf8"));
+    return Object.keys(nextPkg.dependencies || {});
+  } catch {
+    return [];
   }
 }
 
@@ -232,11 +257,10 @@ function buildCliPackage() {
       console.log(`✅ ${pkg} already bundled`);
       return;
     }
-    const candidates = [
-      path.join(appDir, "node_modules", pkg),
-      path.join(rootDir, "node_modules", pkg),
-    ];
-    const src = candidates.find((p) => fs.existsSync(p));
+    const candidates = [appDir, rootDir]
+      .map((base) => resolveInstalledPackageDir(base, pkg))
+      .filter(Boolean);
+    const src = candidates[0];
     if (!src) {
       console.warn(`⚠️  ${pkg} not found locally — bundle will rely on node:sqlite or runtime install`);
       return;
@@ -246,6 +270,12 @@ function buildCliPackage() {
     console.log(`✅ Bundled ${pkg}`);
   }
   ensureModuleInBundle("sql.js");
+  // Next standalone under pnpm can copy .pnpm payloads without re-creating all
+  // top-level package entries. Explicitly materialize Next's direct runtime
+  // deps so Node can resolve imports like "@next/env" at runtime.
+  for (const pkg of getNextRuntimeDependencies(appDir)) {
+    ensureModuleInBundle(pkg);
+  }
   // `open` is external (see serverExternalPackages in next.config.mjs), so it must exist in
   // the bundle's node_modules or every importer throws MODULE_NOT_FOUND at runtime. Output
   // tracing normally copies it; this is the same belt-and-braces guard used for sql.js.
