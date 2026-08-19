@@ -1,3 +1,5 @@
+import { HUGGINGFACE_INFERENCE_BASE_URL } from "../../../src/lib/huggingface.js";
+
 export default {
   id: "huggingface",
   priority: 70,
@@ -30,5 +32,5 @@ export default {
     { id: "openai/whisper-small", name: "Whisper Small (HF)", params: ["language"], kind: "stt" },
   ],
   serviceKinds: ["image", "stt"],
-  imageConfig: { baseUrl: "https://api-inference.huggingface.co/models" },
+  imageConfig: { baseUrl: HUGGINGFACE_INFERENCE_BASE_URL },
 };

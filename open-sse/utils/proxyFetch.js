@@ -4,6 +4,7 @@ import { dbg } from "./debugLog.js";
 
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
+let undiciFetchRef = null;
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
@@ -115,6 +116,43 @@ const HTTP_SUCCESS_MAX = 300;
 function normalizeString(value) {
   if (value === undefined || value === null) return "";
   return String(value).trim();
+}
+
+function isAbsoluteHttpUrl(url) {
+  try {
+    const protocol = new URL(typeof url === "string" ? url : url.toString()).protocol;
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isLoopbackHttpUrl(url) {
+  try {
+    const parsed = new URL(typeof url === "string" ? url : url.toString());
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    return host === "127.0.0.1" || host === "localhost" || host === "::1";
+  } catch {
+    return false;
+  }
+}
+
+export function shouldUseOriginalFetch(url) {
+  return !isAbsoluteHttpUrl(url) || isLoopbackHttpUrl(url);
+}
+
+async function getExternalFetch() {
+  if (undiciFetchRef) return undiciFetchRef;
+  const undici = await import("undici");
+  undiciFetchRef = undici.fetch;
+  return undiciFetchRef;
+}
+
+async function performFetch(url, options = {}) {
+  if (shouldUseOriginalFetch(url)) return originalFetch(url, options);
+  const externalFetch = await getExternalFetch();
+  return externalFetch(url, options);
 }
 
 /**
@@ -303,7 +341,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       "x-relay-target": `${parsed.protocol}//${parsed.host}`,
       "x-relay-path": `${parsed.pathname}${parsed.search}`,
     };
-    return originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
+    return performFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
   }
 
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
@@ -316,7 +354,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       // Proxy resolves DNS externally (not affected by /etc/hosts) — use proxy directly
       try {
         const dispatcher = await getDispatcher(proxyUrl);
-        return await originalFetch(url, { ...options, dispatcher });
+        return await performFetch(url, { ...options, dispatcher });
       } catch (proxyError) {
         if (proxyOptions?.strictProxy === true) {
           throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
@@ -337,20 +375,20 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   if (proxyUrl) {
     try {
       const dispatcher = await getDispatcher(proxyUrl);
-      return await originalFetch(url, { ...options, dispatcher });
+      return await performFetch(url, { ...options, dispatcher });
     } catch (proxyError) {
       // If strictProxy is enabled, fail hard instead of falling back to direct
       if (proxyOptions?.strictProxy === true) {
         throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
       }
       console.warn(`[ProxyFetch] Proxy failed, falling back to direct: ${proxyError.message}`);
-      return originalFetch(url, options);
+      return performFetch(url, options);
     }
   }
 
   // got-scraping disabled — use native fetch directly
   // (Re-enable per-host by wrapping with tryGotScrapingFetch when needed)
-  return originalFetch(url, options);
+  return performFetch(url, options);
 }
 
 /**

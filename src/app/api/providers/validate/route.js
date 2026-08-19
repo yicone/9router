@@ -6,6 +6,7 @@ import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { resolveQoderCredentials, resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
+import { validateHuggingFaceToken } from "@/lib/huggingface";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
@@ -231,6 +232,14 @@ export async function POST(request) {
         return NextResponse.json({
           valid: isValid,
           error: isValid ? null : "Invalid API key or Azure configuration",
+        });
+      }
+
+      if (provider === "huggingface") {
+        const result = await validateHuggingFaceToken(apiKey);
+        return NextResponse.json({
+          valid: result.valid,
+          error: result.error,
         });
       }
 

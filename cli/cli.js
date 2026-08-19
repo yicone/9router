@@ -67,6 +67,25 @@ const { ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRunt
 const { ensureTrayRuntime } = require("./hooks/trayRuntime");
 const args = process.argv.slice(2);
 
+function warmRuntimeDepInBackground(modulePath, exportName) {
+  try {
+    const child = spawn(
+      process.execPath,
+      [
+        "-e",
+        `try { require(${JSON.stringify(modulePath)})[${JSON.stringify(exportName)}]({ silent: true }); } catch {}`,
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+        env: { ...process.env },
+      }
+    );
+    child.unref();
+  } catch {}
+}
+
 // Subcommands (`9router xai video …`) run against an already-running gateway
 // and bypass the launcher flow (no runtime self-heal, no server spawn).
 if (args[0] === "xai" && args[1] === "video") {
@@ -80,13 +99,11 @@ if (args[0] === "xai" && args[1] === "video") {
   return;
 }
 
-// Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.9router/runtime
-// so the server can resolve them via NODE_PATH. Best-effort — sql.js is required,
-// better-sqlite3 is optional. Logs to stderr only on failure.
-try { ensureSqliteRuntime({ silent: true }); } catch {}
-
-// Self-heal tray runtime (systray for macOS/Linux only). Windows skipped.
-try { ensureTrayRuntime({ silent: true }); } catch {}
+// Runtime self-heal is best-effort and must never block the CLI entrypoint.
+// The app can run without better-sqlite3 (fallbacks exist), and tray support
+// can warm up in the background if it is missing on first launch.
+warmRuntimeDepInBackground(path.join(__dirname, "hooks", "sqliteRuntime"), "ensureSqliteRuntime");
+warmRuntimeDepInBackground(path.join(__dirname, "hooks", "trayRuntime"), "ensureTrayRuntime");
 
 // Configuration constants
 const APP_NAME = pkg.name; // Use from package.json
@@ -548,7 +565,7 @@ killAllAppProcesses(port)
 async function showInterfaceMenu(latestVersion) {
   const { selectMenu } = require("./src/cli/utils/input");
   const { clearScreen } = require("./src/cli/utils/display");
-  const { getEndpoint } = require("./src/cli/utils/endpoint");
+  const { getEndpointWithTimeout } = require("./src/cli/utils/endpoint");
 
   clearScreen();
 
@@ -557,7 +574,7 @@ async function showInterfaceMenu(latestVersion) {
   // Detect tunnel/local mode for server URL display
   let serverUrl;
   try {
-    const { endpoint, tunnelEnabled } = await getEndpoint(port);
+    const { endpoint, tunnelEnabled } = await getEndpointWithTimeout(port);
     serverUrl = tunnelEnabled ? endpoint.replace(/\/v1$/, "") : `http://${displayHost}:${port}`;
   } catch (e) {
     serverUrl = `http://${displayHost}:${port}`;

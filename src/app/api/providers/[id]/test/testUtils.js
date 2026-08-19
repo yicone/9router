@@ -18,6 +18,7 @@ import {
   KIMCHI_CONFIG,
 } from "@/lib/oauth/constants/oauth";
 import { buildClineHeaders } from "@/shared/utils/clineAuth";
+import { validateHuggingFaceToken } from "@/lib/huggingface";
 
 // OAuth provider test endpoints
 const OAUTH_TEST_CONFIG = {
@@ -697,6 +698,12 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       case "assemblyai": {
         const res = await fetchWithConnectionProxy("https://api.assemblyai.com/v1/account", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
         return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+      }
+      case "huggingface": {
+        const result = await validateHuggingFaceToken(connection.apiKey, (url, options) =>
+          fetchWithConnectionProxy(url, options, effectiveProxy)
+        );
+        return { valid: result.valid, error: result.error };
       }
       case "nanobanana": {
         const res = await fetchWithConnectionProxy("https://api.nanobananaapi.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
