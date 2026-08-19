@@ -12,6 +12,7 @@ import {
   isNousApiKeyAccepted,
 } from "open-sse/services/nous.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
+import { validateHuggingFaceToken } from "@/lib/huggingface";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
@@ -248,6 +249,14 @@ export async function POST(request) {
       // would reject bedrock outright and send bedrock-xai to a literal "{region}" host.
       if (AI_PROVIDERS[provider]?.credentialForm === "aws") {
         return NextResponse.json(await probeBedrockCredentials({ apiKey, providerSpecificData }, fetch));
+      }
+
+      if (provider === "huggingface") {
+        const result = await validateHuggingFaceToken(apiKey);
+        return NextResponse.json({
+          valid: result.valid,
+          error: result.error,
+        });
       }
 
       // Generic probe for webSearch/webFetch providers (config-driven)

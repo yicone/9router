@@ -4,6 +4,7 @@ import { dbg } from "./debugLog.js";
 
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
+let undiciFetchRef = null;
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
@@ -131,6 +132,43 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
+function isAbsoluteHttpUrl(url) {
+  try {
+    const protocol = new URL(typeof url === "string" ? url : url.toString()).protocol;
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isLoopbackHttpUrl(url) {
+  try {
+    const parsed = new URL(typeof url === "string" ? url : url.toString());
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    return host === "127.0.0.1" || host === "localhost" || host === "::1";
+  } catch {
+    return false;
+  }
+}
+
+export function shouldUseOriginalFetch(url) {
+  return !isAbsoluteHttpUrl(url) || isLoopbackHttpUrl(url);
+}
+
+async function getExternalFetch() {
+  if (undiciFetchRef) return undiciFetchRef;
+  const undici = await import("undici");
+  undiciFetchRef = undici.fetch;
+  return undiciFetchRef;
+}
+
+async function performFetch(url, options = {}) {
+  if (shouldUseOriginalFetch(url)) return originalFetch(url, options);
+  const externalFetch = await getExternalFetch();
+  return externalFetch(url, options);
+}
+
 /**
  * Resolve real IP using Google DNS (bypass system DNS)
  */
@@ -254,7 +292,7 @@ async function getDispatcher(proxyUrl, insecure = false) {
 async function fetchWithTlsFallback(url, options, proxyUrl) {
   try {
     const dispatcher = proxyUrl ? await getDispatcher(proxyUrl) : undefined;
-    return await originalFetch(url, dispatcher ? { ...options, dispatcher } : options);
+    return await performFetch(url, dispatcher ? { ...options, dispatcher } : options);
   } catch (err) {
     const isStrictSsl = process.env.STRICT_SSL === "true" || process.env.STRICT_SSL === "1";
     if (!isStrictSsl && isTlsCertError(err)) {
@@ -264,7 +302,7 @@ async function fetchWithTlsFallback(url, options, proxyUrl) {
       // ponytail: in-memory insecure agent fallback for self-signed MITM corporate/antivirus certs
       console.warn(`[ProxyFetch] TLS cert verification failed (${err.cause?.code || err.code}), retrying with insecure TLS: ${url}`);
       const insecureDispatcher = await getDispatcher(proxyUrl, true);
-      return await originalFetch(url, { ...options, dispatcher: insecureDispatcher });
+      return await performFetch(url, { ...options, dispatcher: insecureDispatcher });
     }
     throw err;
   }
@@ -344,7 +382,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       "x-relay-target": `${parsed.protocol}//${parsed.host}`,
       "x-relay-path": `${parsed.pathname}${parsed.search}`,
     };
-    return originalFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
+    return performFetch(vercelRelayUrl, { ...options, headers: relayHeaders });
   }
 
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
