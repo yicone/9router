@@ -34,7 +34,7 @@ describe("HuggingFace provider", () => {
     expect(result).toEqual({ valid: false, error: "Invalid API key", status: 401 });
   });
 
-  it("uses the router-based inference base URL for image models", () => {
-    expect(huggingface.imageConfig.baseUrl).toBe(HUGGINGFACE_INFERENCE_BASE_URL);
+  it("uses the hf-inference endpoint for speech transcription", () => {
+    expect(huggingface.sttConfig.baseUrl).toBe(HUGGINGFACE_INFERENCE_BASE_URL);
   });
 });
