@@ -3,6 +3,7 @@ import { FORMATS } from "../formats.js";
 import { ROLE, CLAUDE_BLOCK, MODEL_FALLBACK } from "../schema/index.js";
 import { fromOpenAIFinish } from "../concerns/finishReason.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
+import { ERROR_TYPES, DEFAULT_ERROR_MESSAGES } from "../../config/errorConfig.js";
 
 // Legacy "proxy_" prefix used by older request translators. Response strips it
 // defensively so tool names from such turns resolve back (e.g. proxy_Read → Read
@@ -69,6 +70,22 @@ function stopTextBlock(state, results) {
 
 // Convert OpenAI stream chunk to Claude format
 export function openaiToClaudeResponse(chunk, state) {
+  // An in-band upstream failure has no choices, so the guard below would drop it and the Claude
+  // client would see a truncated answer end cleanly. Claude streams report it as an error event.
+  if (chunk?.error) {
+    state.error = {
+      type: chunk.error.type || chunk.error.code || ERROR_TYPES[500].type,
+      message: chunk.error.message || DEFAULT_ERROR_MESSAGES[500],
+      ...(chunk.error.code ? { code: chunk.error.code } : {}),
+    };
+    return [{
+      type: "error",
+      error: {
+        type: state.error.type,
+        message: state.error.message,
+      },
+    }];
+  }
   if (!chunk || !chunk.choices?.[0]) return null;
 
   const results = [];
@@ -184,7 +201,8 @@ export function openaiToClaudeResponse(chunk, state) {
     for (const tc of delta.tool_calls) {
       const idx = tc.index ?? 0;
 
-      if (tc.id) {
+      // GLM/fireworks repeats id+null-name on every arg chunk; open block once per idx
+      if (tc.id && !state.toolCalls.has(idx)) {
         stopThinkingBlock(state, results);
         stopTextBlock(state, results);
 

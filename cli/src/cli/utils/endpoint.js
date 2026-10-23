@@ -19,14 +19,31 @@ async function getEndpoint(port) {
   return { endpoint, tunnelEnabled };
 }
 
+async function getEndpointWithTimeout(port, timeoutMs = 1500) {
+  try {
+    return await Promise.race([
+      getEndpoint(port),
+      new Promise((resolve) => setTimeout(() => resolve({
+        endpoint: `http://localhost:${port}/v1`,
+        tunnelEnabled: false,
+      }), timeoutMs)),
+    ]);
+  } catch {
+    return {
+      endpoint: `http://localhost:${port}/v1`,
+      tunnelEnabled: false,
+    };
+  }
+}
+
 /**
  * Get endpoint with color formatting
  * @param {number} port - Local server port
  * @returns {Promise<string>} Colored endpoint string
  */
 async function getEndpointColored(port) {
-  const { endpoint, tunnelEnabled } = await getEndpoint(port);
+  const { endpoint, tunnelEnabled } = await getEndpointWithTimeout(port);
   return tunnelEnabled ? `${COLORS.green}${endpoint}${COLORS.reset}` : endpoint;
 }
 
-module.exports = { getEndpoint, getEndpointColored };
+module.exports = { getEndpoint, getEndpointWithTimeout, getEndpointColored };
