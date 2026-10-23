@@ -27,6 +27,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   // Registry-declared: names the providerSpecificData field that stands in for an API key, so
   // a provider whose credential lives outside the key field can be saved without one.
   const apiKeyOptionalWith = AI_PROVIDERS?.[provider]?.apiKeyOptionalWith || null;
+  const isSelfHostedStt = provider === "selfhosted-stt";
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
 
@@ -37,6 +38,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     priority: 1,
     proxyPoolId: NONE_PROXY_POOL_VALUE,
     ollamaHostUrl: "",
+    sttBaseUrl: "http://127.0.0.1:8765/v1/audio/transcriptions",
   });
   const [azureData, setAzureData] = useState({
     azureEndpoint: "",
@@ -66,6 +68,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [bulkResult, setBulkResult] = useState(null); // { success, failed }
 
   const buildProviderSpecificData = () => {
+    if (isSelfHostedStt && formData.sttBaseUrl.trim()) {
+      return { baseUrl: formData.sttBaseUrl.trim() };
+    }
     if (isOllamaLocal && formData.ollamaHostUrl.trim()) {
       return { baseUrl: formData.ollamaHostUrl.trim() };
     }
@@ -285,6 +290,15 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               </Button>
             </div>
           </div>
+        )}
+        {isSelfHostedStt && (
+          <Input
+            label="Base URL"
+            value={formData.sttBaseUrl}
+            onChange={(e) => setFormData({ ...formData, sttBaseUrl: e.target.value })}
+            placeholder="http://127.0.0.1:8765/v1/audio/transcriptions"
+            hint="Full OpenAI-compatible transcription endpoint."
+          />
         )}
         {!isOllamaLocal && (
           <div className="flex gap-2">
