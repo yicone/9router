@@ -84,4 +84,20 @@ describe("pending response.completed watchdog", () => {
       vi.useRealTimers();
     }
   });
+
+  it("flushes immediately at [DONE] even while the upstream connection stays open", async () => {
+    vi.useFakeTimers();
+    try {
+      const { source, reader } = await pipe();
+      source.enqueue(encoder.encode(`data: ${JSON.stringify(FINISH_CHUNK)}\n\n`));
+      await vi.advanceTimersByTimeAsync(20);
+      source.enqueue(encoder.encode("data: [DONE]\n\n"));
+      await vi.advanceTimersByTimeAsync(20);
+      const pendingRead = readAll(reader);
+      source.close();
+      expect(completedResponses(await pendingRead)).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

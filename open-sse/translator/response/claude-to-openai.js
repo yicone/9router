@@ -192,7 +192,9 @@ export function claudeToOpenAIResponse(chunk, state) {
       // saw a clean but truncated answer. The OpenAI shape is the one buildErrorBody produces.
       const { type, message } = chunk.error || {};
       const errorType = type || ERROR_TYPES[500].type;
-      results.push({ error: { message: message || DEFAULT_ERROR_MESSAGES[500], type: errorType, code: errorType } });
+      const error = { message: message || DEFAULT_ERROR_MESSAGES[500], type: errorType, code: errorType };
+      state.error = error;
+      results.push({ error });
       break;
     }
   }

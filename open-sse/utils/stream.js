@@ -22,6 +22,8 @@ const STREAM_MODE = {
   PASSTHROUGH: "passthrough" // No translation, normalize output, extract usage
 };
 
+const PENDING_COMPLETION_FLUSH_MS = 3000;
+
 /**
  * Create unified SSE transform stream
  * @param {object} options
@@ -83,6 +85,7 @@ export function createSSEStream(options = {}) {
   let openAIResponsesDoneSent = false;
   let streamDoneSent = false;  // track duplicate [DONE] across transform + flush
   let finalized = false;
+  let completionFlushTimer = null;
   // Client-visible failure seen inside the stream (a Responses `error` /
   // `response.failed` event, or a translator that set state.error). The stream
   // still terminates normally, so without this the requestDetails row is written
@@ -92,6 +95,7 @@ export function createSSEStream(options = {}) {
   // Usage/logging tail, callable from transform() as well as flush(): a client that
   // closes right after the terminal event cancels the reader, and flush() never runs.
   const finalizeStream = () => {
+    if (completionFlushTimer) { clearTimeout(completionFlushTimer); completionFlushTimer = null; }
     if (finalized) return;
     finalized = true;
 
@@ -115,6 +119,18 @@ export function createSSEStream(options = {}) {
         thinking: accumulatedThinking
       }, finalUsage, ttftAt, streamFailure ? { error: streamFailure } : null);
     }
+  };
+
+  const flushPendingCompletion = (controller) => {
+    const terminal = translateResponse(targetFormat, sourceFormat, null, state);
+    for (const item of terminal || []) {
+      if (item == null) continue;
+      const output = formatSSE(item, sourceFormat);
+      reqLogger?.appendConvertedChunk?.(output);
+      controller.enqueue(sharedEncoder.encode(output));
+      sseEmittedCount++;
+    }
+    finalizeStream();
   };
 
   return new TransformStream({
@@ -271,6 +287,10 @@ export function createSSEStream(options = {}) {
         // For Ollama: done=true is the final chunk with finish_reason/usage, must translate
         // For other formats: done=true is the [DONE] sentinel, skip
         if (parsed && parsed.done && targetFormat !== FORMATS.OLLAMA) {
+          if (targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.OPENAI_RESPONSES &&
+              state.completionPending && !state.completedSent) {
+            flushPendingCompletion(controller);
+          }
           // Synthesize response.failed if the Responses stream never sent a terminal event
           if (keepsOpenAIResponsesFormat && !openAIResponsesTerminalSeen) {
             const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();
@@ -394,6 +414,15 @@ export function createSSEStream(options = {}) {
             controller.enqueue(sharedEncoder.encode(output));
             sseEmittedCount++;
           }
+        }
+
+        if (targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.OPENAI_RESPONSES &&
+            state?.completionPending && !state?.completedSent && !completionFlushTimer) {
+          completionFlushTimer = setTimeout(() => {
+            completionFlushTimer = null;
+            if (state?.completedSent) return;
+            try { flushPendingCompletion(controller); } catch { /* controller already closed */ }
+          }, PENDING_COMPLETION_FLUSH_MS);
         }
       }
     },

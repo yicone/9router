@@ -73,11 +73,16 @@ export function openaiToClaudeResponse(chunk, state) {
   // An in-band upstream failure has no choices, so the guard below would drop it and the Claude
   // client would see a truncated answer end cleanly. Claude streams report it as an error event.
   if (chunk?.error) {
+    state.error = {
+      type: chunk.error.type || chunk.error.code || ERROR_TYPES[500].type,
+      message: chunk.error.message || DEFAULT_ERROR_MESSAGES[500],
+      ...(chunk.error.code ? { code: chunk.error.code } : {}),
+    };
     return [{
       type: "error",
       error: {
-        type: chunk.error.type || chunk.error.code || ERROR_TYPES[500].type,
-        message: chunk.error.message || DEFAULT_ERROR_MESSAGES[500],
+        type: state.error.type,
+        message: state.error.message,
       },
     }];
   }

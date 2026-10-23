@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { createSSETransformStreamWithLogger } from "../../open-sse/utils/stream.js";
+import { claudeToOpenAIResponse } from "../../open-sse/translator/response/claude-to-openai.js";
+import { openaiToClaudeResponse } from "../../open-sse/translator/response/openai-to-claude.js";
+import { openaiToAntigravityResponse } from "../../open-sse/translator/response/openai-to-antigravity.js";
 
 // A provider can fail mid-stream inside an HTTP 200: Anthropic sends `event: error` (for example
 // overloaded_error), and the Bedrock executor re-emits AWS in-band exceptions in the same shapes.
@@ -61,6 +64,20 @@ const OPENAI_FAILING_STREAM = [
 ];
 
 describe("in-band stream errors survive format translation", () => {
+  it("marks translator error chunks on state for requestDetails", () => {
+    const cases = [
+      [claudeToOpenAIResponse, { type: "error", error: { type: "overloaded_error", message: "Overloaded" } }],
+      [openaiToClaudeResponse, { error: { type: "server_error", code: "E1", message: "Failed" } }],
+      [openaiToAntigravityResponse, { error: { type: "server_error", code: "E1", message: "Failed" } }],
+    ];
+    for (const [translate, chunk] of cases) {
+      const state = {};
+      const output = translate(chunk, state);
+      expect(output).toBeTruthy();
+      expect(state.error).toMatchObject({ message: expect.any(String) });
+    }
+  });
+
   it("Claude upstream -> OpenAI client: emits a Chat Completions error chunk", async () => {
     const events = parseEvents(await runTransform(FORMATS.CLAUDE, FORMATS.OPENAI, CLAUDE_FAILING_STREAM));
 

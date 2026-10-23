@@ -11,7 +11,10 @@ export function openaiToAntigravityResponse(chunk, state) {
 
   // An in-band upstream failure has no choices and would be dropped below. Forward it in the
   // shape the gateway already sends non-Claude clients on a stream error (buildStreamErrorBytes).
-  if (chunk.error) return { error: chunk.error };
+  if (chunk.error) {
+    state.error = chunk.error;
+    return { error: chunk.error };
+  }
 
   const choice = chunk.choices?.[0];
   if (!choice) {
