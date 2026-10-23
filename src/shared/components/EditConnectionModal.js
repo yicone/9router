@@ -24,6 +24,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
   const [awsData, setAwsData] = useState({ profile: "", region: "", accessKeyId: "", sessionToken: "" });
   const [clearAwsSessionToken, setClearAwsSessionToken] = useState(false);
+  const [sttBaseUrl, setSttBaseUrl] = useState("");
   const [region, setRegion] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -60,6 +61,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         });
         setClearAwsSessionToken(false);
       }
+      if (connection.provider === "selfhosted-stt") {
+        setSttBaseUrl(connection.providerSpecificData?.baseUrl || "");
+      }
       // Load region for providers that support it (e.g. xiaomi-tokenplan)
       const providerCfg = AI_PROVIDERS?.[connection.provider];
       if (providerCfg?.regions) {
@@ -75,6 +79,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const isAzure = connection?.provider === "azure";
   const isCloudflareAi = connection?.provider === "cloudflare-ai";
   const usesAwsCredentialForm = AI_PROVIDERS?.[connection?.provider]?.credentialForm === "aws";
+  const isSelfHostedStt = connection?.provider === "selfhosted-stt";
   const isCompatible = connection
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
     : false;
@@ -193,6 +198,12 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       }
       if (usesAwsCredentialForm) {
         updates.providerSpecificData = buildAwsSpecificData();
+      }
+      if (isSelfHostedStt) {
+        updates.providerSpecificData = {
+          ...(connection.providerSpecificData || {}),
+          baseUrl: sttBaseUrl.trim(),
+        };
       }
       // Persist updated region for region-aware providers
       if (providerRegions && region) {
@@ -336,6 +347,16 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
               </label>
             </div>
           </div>
+        )}
+
+        {isSelfHostedStt && (
+          <Input
+            label="Base URL"
+            value={sttBaseUrl}
+            onChange={(e) => setSttBaseUrl(e.target.value)}
+            placeholder="http://127.0.0.1:8765/v1/audio/transcriptions"
+            hint="Full OpenAI-compatible transcription endpoint."
+          />
         )}
 
         {providerRegions && (
