@@ -285,6 +285,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       log,
       clientRawRequest,
       connectionId: credentials.connectionId,
+      attemptFailover: excludeConnectionIds.size > 0,
       userAgent,
       apiKey,
       ccFilterNaming: !!chatSettings.ccFilterNaming,

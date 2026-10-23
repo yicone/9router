@@ -334,7 +334,10 @@ export function createSSEStream(options = {}) {
         // Responses same-format passthrough: re-emit with original event framing
         if (keepsOpenAIResponsesFormat && openAIResponsesEventName) {
           if (isOpenAIResponsesFailureEvent(openAIResponsesEventName, parsed)) {
-            streamFailure = extractOpenAIResponsesFailure(parsed);
+            const nextFailure = extractOpenAIResponsesFailure(parsed);
+            streamFailure = streamFailure
+              ? { ...streamFailure, requestId: nextFailure.requestId || streamFailure.requestId }
+              : nextFailure;
           }
           const output = formatSSE({ event: openAIResponsesEventName, data: parsed }, sourceFormat);
           reqLogger?.appendConvertedChunk?.(output);
@@ -342,7 +345,10 @@ export function createSSEStream(options = {}) {
           currentOpenAIResponsesEvent = null;
           sseEmittedCount++;
           // Responses clients (codex) close on response.completed instead of [DONE]
-          if (openAIResponsesTerminalSeen) finalizeStream();
+          // An `error` frame may be followed by response.failed carrying the
+          // upstream response/request id. Keep the stream open until that frame
+          // or [DONE] so the attempt record retains the id.
+          if (openAIResponsesTerminalSeen && openAIResponsesEventName !== "error") finalizeStream();
           continue;
         }
 

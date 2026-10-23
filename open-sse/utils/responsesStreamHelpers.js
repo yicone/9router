@@ -46,6 +46,9 @@ export function extractOpenAIResponsesFailure(chunk) {
     type: error.type || fallback.type,
     code: error.code || fallback.code,
     message: error.message || fallback.message,
+    ...((chunk?.response?.id || chunk?.request_id || chunk?.requestId)
+      ? { requestId: chunk.response?.id || chunk.request_id || chunk.requestId }
+      : {}),
   };
 }
 

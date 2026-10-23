@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { saveRequestDetail } from "./requestDetailsRepo.js";
 
 function maskApiKey(key) {
   if (!key || typeof key !== "string") return null;
@@ -779,8 +780,36 @@ function formatLogDate(date = new Date()) {
   return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-// No-op: request log is now derived from usageHistory table on read.
-export async function appendRequestLog() {}
+// Persist one bounded, prompt-free attempt record. The old implementation was a
+// no-op, which made mid-stream failures invisible in requestDetails. Keep this
+// separate from usageHistory: it records transport/fallback attempts, not billing.
+export async function appendRequestLog({ model, provider, connectionId, status, httpStatus, error, failover = false, elapsedMs, requestId } = {}) {
+  const parsedStatus = typeof httpStatus === "number"
+    ? httpStatus
+    : (typeof status === "string" ? Number(status.match(/\b(\d{3})\b/)?.[1]) || undefined : undefined);
+  await saveRequestDetail({
+    provider: provider || "unknown",
+    model: model || "unknown",
+    connectionId: connectionId || undefined,
+    timestamp: new Date().toISOString(),
+    status: String(status || "attempt").toLowerCase().startsWith("failed") ? "error" : "attempt",
+    request: null,
+    providerRequest: null,
+    providerResponse: null,
+    response: {},
+    attempt: {
+      at: new Date().toISOString(),
+      account: connectionId ? `${String(connectionId).slice(0, 8)}…` : undefined,
+      model: model || undefined,
+      httpStatus: parsedStatus,
+      errorType: error?.type || error?.name || undefined,
+      errorCode: error?.code || undefined,
+      requestId: requestId || error?.requestId || error?.request_id || undefined,
+      failover: Boolean(failover),
+      ...(elapsedMs === undefined ? {} : { elapsedMs }),
+    },
+  });
+}
 
 export async function getRecentLogs(limit = 200) {
   try {

@@ -93,7 +93,23 @@ export function buildRequestDetail(base, overrides = {}) {
     response: base.response || {},
     pxpipe: base.pxpipe || undefined,
     status: base.status || "success",
+    attempt: base.attempt || undefined,
     ...overrides
+  };
+}
+
+export function buildAttemptMetadata({ connectionId, model, status, error, failover = false, startedAt }) {
+  const elapsedMs = startedAt ? Math.max(0, Date.now() - startedAt) : undefined;
+  return {
+    at: new Date().toISOString(),
+    account: connectionId ? `${String(connectionId).slice(0, 8)}…` : undefined,
+    model: model || undefined,
+    httpStatus: typeof status === "number" ? status : undefined,
+    errorType: error?.type || error?.name || undefined,
+    errorCode: error?.code || undefined,
+    requestId: error?.requestId || error?.request_id || undefined,
+    failover: Boolean(failover),
+    ...(elapsedMs === undefined ? {} : { elapsedMs }),
   };
 }
 

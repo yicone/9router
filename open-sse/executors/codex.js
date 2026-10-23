@@ -22,6 +22,8 @@ const CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS = [
   // response.failed with model unavailable/capacity — arrives as HTTP 200 SSE before any real output
   "response.failed",
   "\"type\":\"response.failed\"",
+  "configured model is unavailable from the provider",
+  "not offered on this account",
 ];
 // Do not stop the preflight peek on an empty delta frame. Codex can emit one before
 // response.failed; only real text/tool arguments make a fallback unsafe.

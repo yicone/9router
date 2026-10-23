@@ -66,6 +66,7 @@ describe("extractOpenAIResponsesFailure", () => {
       type: "stream_error",
       code: "server_error",
       message: "An error occurred while processing your request.",
+      requestId: "resp_020667fbda84b64e016aaa5b46b4d487d09c90621aac39a27f",
     });
   });
 
@@ -139,6 +140,7 @@ describe("stream failure reaches onStreamComplete (#4104)", () => {
       type: "server_error",
       code: "server_error",
       message: "An error occurred while processing your request.",
+      requestId: "resp_020667fbda84b64e016aaa5b46b4d487d09c90621aac39a27f",
     });
   });
 
